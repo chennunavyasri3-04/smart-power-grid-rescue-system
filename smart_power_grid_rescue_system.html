@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smart Power Grid Rescue System | Control Room</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #060b19;
+    color: #e2e8f0;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0b1121; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  @keyframes pulse-border {
+    0%, 100% { border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 12px rgba(239, 68, 68, 0.25); }
+    50% { border-color: rgba(239, 68, 68, 0.2); box-shadow: none; }
+  }
+  .alert-pulse { animation: pulse-border 2s infinite; }
+  .tab-active {
+    background: linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(14, 165, 233, 0.03) 100%);
+    border-left: 3px solid #38bdf8;
+    color: #38bdf8;
+  }
+</style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+<!-- TOP UTILITY BAR -->
+<header class="bg-[#091022] border-b border-slate-800/90 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-40">
+  <div class="flex items-center gap-3">
+    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="font-bold tracking-tight text-white text-base">GRIDRESCUE AI</span>
+        <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 mono">v2.6 AUTONOMOUS</span>
+      </div>
+      <p class="text-[11px] text-slate-400">Intelligent Power Grid Monitoring & Emergency Restoration Control</p>
+    </div>
+  </div>
+
+  <!-- Live Grid Telemetry Strip -->
+  <div class="hidden xl:flex items-center gap-5 bg-[#0d162c] border border-slate-800 px-4 py-1.5 rounded-lg text-xs">
+    <div class="flex items-center gap-2">
+      <span id="global-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="text-slate-400">GRID STATE:</span>
+      <span id="global-status-text" class="font-semibold text-emerald-400 mono">NORMAL (50.02 Hz)</span>
+    </div>
+    <div class="h-4 w-px bg-slate-800"></div>
+    <div>
+      <span class="text-slate-400">AVAILABLE:</span>
+      <span id="top-avail-mw" class="font-semibold text-white mono ml-1">48.5 MW</span>
+    </div>
+    <div class="h-4 w-px bg-slate-800"></div>
+    <div>
+      <span class="text-slate-400">HOSPITAL ICU:</span>
+      <span id="top-hosp-status" class="font-semibold text-emerald-400 mono ml-1">ONLINE (GRID)</span>
+    </div>
+    <div class="h-4 w-px bg-slate-800"></div>
+    <div>
+      <span class="text-slate-400">BATTERY SOC:</span>
+      <span id="top-batt-soc" class="font-semibold text-sky-400 mono ml-1">88%</span>
+    </div>
+  </div>
+
+  <!-- Navigation & Role Controls -->
+  <div class="flex items-center gap-2">
+    <button onclick="switchMainView('home')" id="btn-nav-home" class="px-3 py-1.5 rounded-md text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition">Public Portal</button>
+    <button onclick="switchMainView('user')" id="btn-nav-user" class="px-3 py-1.5 rounded-md text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition">Citizen Dashboard</button>
+    <button onclick="switchMainView('operator')" id="btn-nav-operator" class="px-3 py-1.5 rounded-md text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition">Operator Control Room</button>
+    <div id="auth-badge" class="ml-1 pl-2 border-l border-slate-800 flex items-center gap-2">
+      <button onclick="openAuthModal('login')" id="btn-login-trigger" class="px-3 py-1.5 rounded-md text-xs font-semibold border border-sky-500/40 text-sky-400 hover:bg-sky-500/10 transition">Login</button>
+      <div id="logged-user-chip" class="hidden items-center gap-2 bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-md text-xs">
+        <span id="logged-user-name" class="font-medium text-sky-300">Operator</span>
+        <button onclick="logoutUser()" class="text-rose-400 hover:text-rose-300 text-[11px] font-semibold ml-1">Logout</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ==================== VIEW 1: PUBLIC HOME PAGE ==================== -->
+<main id="view-home" class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+  <!-- Hero Status Banner -->
+  <div class="bg-gradient-to-r from-[#0c162d] via-[#0f1d3a] to-[#0c162d] border border-slate-800 rounded-xl p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+    <div class="space-y-2 max-w-2xl">
+      <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium" id="home-alert-pill">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="home-hero-badge">City Distribution Network Operational</span>
+      </div>
+      <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Smart Power Grid Rescue & Public Utility Portal</h1>
+      <p class="text-sm text-slate-300 leading-relaxed">Real-time city electricity distribution status, hospital emergency backup telemetry, renewable microgrid reserves, and instant citizen outage reporting.</p>
+      <div class="pt-2 flex flex-wrap gap-3">
+        <button onclick="switchMainView('user'); setTimeout(()=>document.getElementById('report-failure-form').scrollIntoView({behavior:'smooth'}),100)" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg shadow-rose-600/20 transition flex items-center gap-2">
+          <span>⚠ Report Power Failure</span>
+        </button>
+        <button onclick="switchMainView('user')" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition">
+          Check Grid & Zone Status
+        </button>
+        <button onclick="demoOperatorQuickLogin()" class="px-4 py-2 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 text-xs font-semibold transition">
+          Launch Operator Control Room →
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Summary Box -->
+    <div class="w-full lg:w-96 bg-[#070d1c] border border-slate-800 rounded-xl p-4 space-y-3">
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-slate-400 font-medium">LIVE SUBSTATION TELEMETRY</span>
+        <span class="mono text-sky-400" id="home-clock">--:--:--</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-[#0c1428] p-3 rounded-lg border border-slate-800/80">
+          <div class="text-[11px] text-slate-400">Grid Status</div>
+          <div id="home-grid-status" class="text-sm font-bold text-emerald-400 mt-0.5">OPERATIONAL</div>
+        </div>
+        <div class="bg-[#0c1428] p-3 rounded-lg border border-slate-800/80">
+          <div class="text-[11px] text-slate-400">Power Available</div>
+          <div id="home-power-avail" class="text-sm font-bold text-white mono mt-0.5">48.5 / 50.0 MW</div>
+        </div>
+        <div class="bg-[#0c1428] p-3 rounded-lg border border-slate-800/80">
+          <div class="text-[11px] text-slate-400">Active Outages</div>
+          <div id="home-active-outages" class="text-sm font-bold text-emerald-400 mono mt-0.5">0 Zones</div>
+        </div>
+        <div class="bg-[#0c1428] p-3 rounded-lg border border-slate-800/80">
+          <div class="text-[11px] text-slate-400">Hospital Backup</div>
+          <div id="home-hosp-backup" class="text-sm font-bold text-sky-400 mt-0.5">READY (100%)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 Key Infrastructure Status Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-slate-400 font-medium">Affected Service Areas</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 mono" id="home-affected-badge">NONE</span>
+      </div>
+      <div id="home-affected-list" class="text-sm font-semibold text-white mt-2">All 3 Residential Zones & Critical Nodes Energized</div>
+      <p class="text-xs text-slate-400 mt-1">Automated feeder isolation active</p>
+    </div>
+
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-slate-400 font-medium">Hospital Emergency Power</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 mono">PRIORITY 1</span>
+      </div>
+      <div id="home-hosp-detail" class="text-sm font-semibold text-white mt-2">City General ICU: Main Grid + 6.5h Diesel/BESS</div>
+      <p class="text-xs text-slate-400 mt-1">Zero-transfer-delay ATS armed</p>
+    </div>
+
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-slate-400 font-medium">Solar & BESS Microgrid</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 mono" id="home-solar-mw">6.4 MW</span>
+      </div>
+      <div id="home-battery-detail" class="text-sm font-semibold text-white mt-2">Battery Storage: 88% SOC (14.2 MWh)</div>
+      <p class="text-xs text-slate-400 mt-1">Island-capable microgrid standby</p>
+    </div>
+
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-slate-400 font-medium">Utility Portal Access</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-400 mono">RBAC SECURE</span>
+      </div>
+      <div class="mt-2 flex gap-2">
+        <button onclick="openAuthModal('login')" class="flex-1 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-medium text-white transition">Citizen Login</button>
+        <button onclick="demoOperatorQuickLogin()" class="flex-1 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-xs font-medium text-white transition">Operator Login</button>
+      </div>
+      <p class="text-xs text-slate-400 mt-1.5">Role-verified telemetry & control</p>
+    </div>
+  </div>
+</main>
+
+<!-- ==================== VIEW 2: NORMAL USER (CITIZEN) DASHBOARD ==================== -->
+<main id="view-user" class="hidden flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+    <div>
+      <h1 class="text-xl font-bold text-white">Citizen Power Status & Outage Tracking Dashboard</h1>
+      <p class="text-xs text-slate-400">Read-only public grid telemetry, restoration tracking, and outage reporting (High-voltage switching restricted to authorized operators)</p>
+    </div>
+    <span class="text-xs px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">Role: <strong class="text-sky-400">Citizen / Public Viewer</strong></span>
+  </div>
+
+  <!-- Citizen KPI Row -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="text-xs text-slate-400">Current Grid Status</div>
+      <div id="user-grid-state" class="text-lg font-bold text-emerald-400 mt-1">NORMAL</div>
+      <div class="text-[11px] text-slate-500 mt-0.5">Voltage: 230.4 V Nominal</div>
+    </div>
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="text-xs text-slate-400">Available Capacity</div>
+      <div id="user-avail-power" class="text-lg font-bold text-white mono mt-1">48.5 MW</div>
+      <div class="text-[11px] text-slate-500 mt-0.5">Reserve Margin: 18.2%</div>
+    </div>
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="text-xs text-slate-400">Affected Areas</div>
+      <div id="user-affected-zones" class="text-lg font-bold text-emerald-400 mt-1">None</div>
+      <div class="text-[11px] text-slate-500 mt-0.5">All feeders closed</div>
+    </div>
+    <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+      <div class="text-xs text-slate-400">AI Restoration Status</div>
+      <div id="user-restoration-state" class="text-lg font-bold text-sky-400 mt-1">STANDBY</div>
+      <div class="text-[11px] text-slate-500 mt-0.5">Autonomous monitoring active</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Public Alerts & Service Updates -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-white uppercase tracking-wider">Live Outage Alerts & Restoration Progress</h2>
+          <span class="text-xs text-sky-400 mono">AUTO-SYNCED</span>
+        </div>
+        <div id="user-alerts-feed" class="space-y-2.5 text-xs">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5">
+        <h2 class="text-sm font-bold text-white uppercase tracking-wider mb-3">Essential Public Services Power Status</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div class="bg-[#070d1c] border border-slate-800 p-3 rounded-lg">
+            <div class="text-slate-400">City General Hospital</div>
+            <div id="user-svc-hosp" class="font-bold text-emerald-400 mt-1">ENERGIZED (Main + Backup)</div>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 p-3 rounded-lg">
+            <div class="text-slate-400">Municipal Water Pump</div>
+            <div id="user-svc-water" class="font-bold text-emerald-400 mt-1">ENERGIZED (100% Flow)</div>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 p-3 rounded-lg">
+            <div class="text-slate-400">Telecom & Emergency Comms</div>
+            <div id="user-svc-telecom" class="font-bold text-emerald-400 mt-1">ENERGIZED (5G/VHF Online)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Citizen Power Failure Report Form -->
+    <div id="report-failure-form" class="bg-[#0b1224] border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-bold text-white uppercase tracking-wider mb-1">Report Power Failure</h2>
+      <p class="text-xs text-slate-400 mb-4">Submit localized outage telemetry directly to the AI Fault Detection & Dispatch engine.</p>
+      <form onsubmit="submitCitizenReport(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1">Affected Zone / Locality</label>
+          <select id="rep-zone" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+            <option value="Residential Zone R1 (North)">Residential Zone R1 (North)</option>
+            <option value="Residential Zone R2 (Central)">Residential Zone R2 (Central)</option>
+            <option value="Residential Zone R3 (East)">Residential Zone R3 (East)</option>
+            <option value="Hospital / Medical District">Hospital / Medical District</option>
+            <option value="Water Treatment & Telecom Sector">Water Treatment & Telecom Sector</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">Issue Type</label>
+          <select id="rep-type" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+            <option value="Complete Power Blackout">Complete Power Blackout</option>
+            <option value="Low Voltage / Fluctuation">Low Voltage / Fluctuation</option>
+            <option value="Transformer Sparking / Overheating">Transformer Sparking / Overheating</option>
+            <option value="Downed Distribution Line">Downed Distribution Line</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">Description / Landmark</label>
+          <textarea id="rep-desc" rows="2" required placeholder="e.g., Feeder L4 tripped near Sector 4 junction..." class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none"></textarea>
+        </div>
+        <button type="submit" class="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition">Submit Outage Ticket</button>
+      </form>
+      <div id="citizen-ticket-list" class="mt-4 pt-3 border-t border-slate-800 space-y-2 text-xs"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ==================== VIEW 3: OPERATOR CONTROL ROOM (10 MODULES) ==================== -->
+<div id="view-operator" class="hidden flex-1 flex flex-col lg:flex-row">
+  <!-- Left Sidebar: 10 Main Modules -->
+  <aside class="w-full lg:w-64 bg-[#080e1e] border-b lg:border-b-0 lg:border-r border-slate-800/90 flex flex-col justify-between shrink-0">
+    <div class="p-3 space-y-1">
+      <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Control Room Modules (10)</div>
+      <button onclick="switchModule('mod-1')" id="nav-mod-1" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition tab-active">1. Operations Dashboard</button>
+      <button onclick="switchModule('mod-2')" id="nav-mod-2" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">2. Grid Digital Twin</button>
+      <button onclick="switchModule('mod-3')" id="nav-mod-3" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">3. Grid Monitoring</button>
+      <button onclick="switchModule('mod-4')" id="nav-mod-4" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">4. Critical Services</button>
+      <button onclick="switchModule('mod-5')" id="nav-mod-5" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition flex items-center justify-between">
+        <span>5. AI Agent Control Center</span>
+        <span id="ai-nav-badge" class="w-2 h-2 rounded-full bg-sky-400"></span>
+      </button>
+      <button onclick="switchModule('mod-6')" id="nav-mod-6" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">6. GNN Network Intelligence</button>
+      <button onclick="switchModule('mod-7')" id="nav-mod-7" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">7. RAG Knowledge Center</button>
+      <button onclick="switchModule('mod-8')" id="nav-mod-8" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">8. Optimization & Restoration</button>
+      <button onclick="switchModule('mod-9')" id="nav-mod-9" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">9. Safety & Verification</button>
+      <button onclick="switchModule('mod-10')" id="nav-mod-10" class="mod-nav w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800/60 transition">10. Reports & Audit Logs</button>
+    </div>
+
+    <!-- Safety Notice Footer in Sidebar -->
+    <div class="p-3 m-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300/90 space-y-1">
+      <div class="font-bold text-amber-400">SIMULATION SANDBOX</div>
+      <p class="leading-snug text-slate-300">All switching & restoration actions execute strictly in digital simulation. Zero physical HV actuation.</p>
+    </div>
+  </aside>
+
+  <!-- Main Workspace Area -->
+  <div class="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
+
+    <!-- SIMULATION SCENARIO INJECTOR BAR (ALWAYS ACCESSIBLE IN CONTROL ROOM) -->
+    <div class="bg-[#0b1326] border border-slate-800 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold uppercase tracking-wider text-sky-400">Fault & Scenario Simulator:</span>
+        <span class="text-[11px] text-slate-400 hidden sm:inline">(Triggers autonomous 10-step LangGraph AI Rescue Workflow)</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5 text-xs">
+        <button onclick="triggerScenario('A')" class="px-2.5 py-1.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-medium transition">A. Normal Reset</button>
+        <button onclick="triggerScenario('B')" class="px-2.5 py-1.5 rounded bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium transition">B. Line L4 Fault</button>
+        <button onclick="triggerScenario('C')" class="px-2.5 py-1.5 rounded bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-medium transition">C. Transformer Overload</button>
+        <button onclick="triggerScenario('D')" class="px-2.5 py-1.5 rounded bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 font-medium transition">D. Hospital ICU Surge</button>
+        <button onclick="triggerScenario('E')" class="px-2.5 py-1.5 rounded bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 text-orange-300 font-medium transition">E. Low Battery SOC</button>
+        <button onclick="triggerScenario('F')" class="px-2.5 py-1.5 rounded bg-red-600/30 hover:bg-red-600/40 border border-red-500/60 text-red-200 font-semibold transition">F. Multi-Fault Crisis</button>
+        <button onclick="triggerScenario('G')" class="px-2.5 py-1.5 rounded bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/50 text-indigo-200 font-semibold transition">G. Recovery Fail & Replan</button>
+      </div>
+    </div>
+
+    <!-- ==================== MODULE 1: OPERATIONS DASHBOARD ==================== -->
+    <section id="mod-1" class="mod-section space-y-5">
+      <!-- Top KPI Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">Overall Grid Health</div>
+          <div id="op-health" class="text-xl font-bold text-emerald-400 mono mt-1">99.4%</div>
+          <div id="op-health-sub" class="text-[11px] text-slate-500">All 13 nodes stable</div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">Active Incidents</div>
+          <div id="op-incidents" class="text-xl font-bold text-white mono mt-1">0</div>
+          <div id="op-incidents-sub" class="text-[11px] text-emerald-400">Zero unmitigated faults</div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">Available Power</div>
+          <div id="op-avail-mw" class="text-xl font-bold text-sky-400 mono mt-1">48.5 MW</div>
+          <div id="op-load-mw" class="text-[11px] text-slate-400">Load: 34.2 MW</div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">Hospital Backup</div>
+          <div id="op-hosp-stat" class="text-xl font-bold text-emerald-400 mono mt-1">ARMED</div>
+          <div id="op-hosp-runtime" class="text-[11px] text-slate-400">Gen + BESS: 8.4 hrs</div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">Solar & Battery</div>
+          <div id="op-solar-stat" class="text-xl font-bold text-amber-400 mono mt-1">6.4 MW</div>
+          <div id="op-batt-stat" class="text-[11px] text-slate-400">BESS: 88% (4.2h)</div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400">AI Agent Pipeline</div>
+          <div id="op-ai-state" class="text-xl font-bold text-sky-400 mono mt-1">MONITORING</div>
+          <div id="op-ai-step" class="text-[11px] text-slate-400">Step 1/10 Active</div>
+        </div>
+      </div>
+
+      <!-- Middle Split: Live Mini Topology + Autonomous AI Workflow Live Tracker -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+        <!-- Mini Digital Twin Preview -->
+        <div class="xl:col-span-7 bg-[#0b1224] border border-slate-800 rounded-xl p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <h2 class="text-sm font-bold text-white">Live Distribution Network Topology (13-Node City Grid)</h2>
+              <p class="text-[11px] text-slate-400">Substation S1, Transformers T1/T2, Lines L1–L4, Hospital, Telecom, Water Pump, Zones R1–R3, Solar, BESS, Gen</p>
+            </div>
+            <button onclick="switchModule('mod-2')" class="text-xs text-sky-400 hover:underline">Expand Digital Twin →</button>
+          </div>
+          <div id="cy-mini" class="w-full h-80 bg-[#060b17] rounded-lg border border-slate-800/90"></div>
+          <div class="flex flex-wrap items-center gap-4 mt-2.5 text-[11px] text-slate-300">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Normal / Energized</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>Fault / Tripped</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>Affected / Degraded</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>Backup / Restored Path</span>
+          </div>
+        </div>
+
+        <!-- Live 10-Step Autonomous AI Workflow Panel -->
+        <div class="xl:col-span-5 bg-[#0b1224] border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="text-sm font-bold text-white">Autonomous 10-Step AI Rescue Pipeline</h2>
+              <span id="workflow-badge" class="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 mono">IDLE / WATCHING</span>
+            </div>
+            <div id="op-workflow-steps" class="space-y-1.5 text-xs max-h-80 overflow-y-auto pr-1">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+          <div class="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs">
+            <span class="text-slate-400">Recovery Progress:</span>
+            <div class="w-48 bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="recovery-progress-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 100%"></div>
+            </div>
+            <span id="recovery-progress-pct" class="mono font-bold text-emerald-400">100%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom: Incident History Table -->
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-white">Recent Grid Fault & Autonomous Restoration Log</h2>
+          <button onclick="switchModule('mod-10')" class="text-xs text-sky-400 hover:underline">Full Audit Logs →</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-400 border-b border-slate-800">
+              <tr>
+                <th class="pb-2">Incident ID</th>
+                <th class="pb-2">Timestamp</th>
+                <th class="pb-2">Scenario / Fault</th>
+                <th class="pb-2">Affected Nodes</th>
+                <th class="pb-2">AI Action Executed</th>
+                <th class="pb-2">Verification</th>
+              </tr>
+            </thead>
+            <tbody id="op-incident-tbody" class="divide-y divide-slate-800/70"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 2: GRID DIGITAL TWIN ==================== -->
+    <section id="mod-2" class="mod-section hidden space-y-4">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 class="text-base font-bold text-white">Interactive City Power Grid Digital Twin (Cytoscape.js)</h2>
+            <p class="text-xs text-slate-400">Click any node or power line to inspect live electrical parameters, breaker states, and microgrid islanding status.</p>
+          </div>
+          <div class="flex gap-2 text-xs">
+            <button onclick="cyFull && cyFull.fit()" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Reset Zoom</button>
+            <button onclick="triggerScenario('A')" class="px-3 py-1.5 rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-300">Restore Nominal Topology</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div id="cy-full" class="lg:col-span-3 h-[500px] bg-[#050914] rounded-xl border border-slate-800"></div>
+          <div class="bg-[#070d1c] border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+            <h3 class="font-bold text-sky-400 uppercase tracking-wider">Node / Line Inspector</h3>
+            <div id="twin-inspector" class="space-y-2 text-slate-300">
+              <p class="text-slate-400">Select a node or feeder line in the graph to inspect real-time telemetry.</p>
+            </div>
+            <div class="pt-3 border-t border-slate-800 space-y-1.5">
+              <div class="font-semibold text-slate-200">5 Core Solutions Active:</div>
+              <div class="text-[11px] text-emerald-400">✓ 1. Hospital Emergency ATS</div>
+              <div class="text-[11px] text-emerald-400">✓ 2. Solar+BESS Smart Microgrid</div>
+              <div class="text-[11px] text-emerald-400">✓ 3. ML Fault Detection</div>
+              <div class="text-[11px] text-emerald-400">✓ 4. Telecom & Water Protection</div>
+              <div class="text-[11px] text-emerald-400">✓ 5. OR-Tools AI Restoration</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 3: GRID MONITORING ==================== -->
+    <section id="mod-3" class="mod-section hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+          <h3 class="text-sm font-bold text-white mb-2">Real-Time Feeder Voltage & Frequency Telemetry</h3>
+          <div class="h-64"><canvas id="chart-voltage"></canvas></div>
+        </div>
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+          <h3 class="text-sm font-bold text-white mb-2">Generation Mix vs City Load Demand (MW)</h3>
+          <div class="h-64"><canvas id="chart-load"></canvas></div>
+        </div>
+      </div>
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-white mb-3">Live PMU / SCADA Sensor Matrix</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs mono">
+            <thead class="text-slate-400 border-b border-slate-800">
+              <tr>
+                <th class="pb-2">Sensor / Node</th>
+                <th class="pb-2">Type</th>
+                <th class="pb-2">Voltage (kV / V)</th>
+                <th class="pb-2">Current (A)</th>
+                <th class="pb-2">Temp (°C)</th>
+                <th class="pb-2">Active Load</th>
+                <th class="pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody id="sensor-table-body" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 4: CRITICAL SERVICES MANAGEMENT ==================== -->
+    <section id="mod-4" class="mod-section hidden space-y-5">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Solution 1: Hospital Emergency Power -->
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">1. Hospital Emergency Power Management (Tier-1)</h3>
+            <span id="cs-hosp-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/15 text-emerald-400">PROTECTED</span>
+          </div>
+          <p class="text-xs text-slate-400">Dedicated uninterruptible power routing for ICU ventilators, surgical theatres, and cold-chain storage.</p>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">ICU Load</div>
+              <div id="cs-hosp-load" class="text-base font-bold text-white mono mt-0.5">4.2 MW</div>
+            </div>
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">Diesel Gen</div>
+              <div id="cs-gen-stat" class="text-base font-bold text-sky-400 mono mt-0.5">STANDBY</div>
+            </div>
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">Backup Runtime</div>
+              <div id="cs-hosp-rt" class="text-base font-bold text-emerald-400 mono mt-0.5">8.4 hrs</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solution 2: Smart Microgrid System -->
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">2. Smart Microgrid & Islanding Control</h3>
+            <span id="cs-microgrid-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-sky-500/15 text-sky-400">GRID-TIED</span>
+          </div>
+          <p class="text-xs text-slate-400">Solar PV array + Lithium-Iron-Phosphate BESS capable of autonomous islanding during upstream substation loss.</p>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">Solar Output</div>
+              <div id="cs-solar-out" class="text-base font-bold text-amber-400 mono mt-0.5">6.4 MW</div>
+            </div>
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">BESS SOC</div>
+              <div id="cs-bess-soc" class="text-base font-bold text-sky-400 mono mt-0.5">88%</div>
+            </div>
+            <div class="bg-[#070d1c] p-3 rounded-lg border border-slate-800">
+              <div class="text-slate-400">Island Mode</div>
+              <div id="cs-island-state" class="text-base font-bold text-emerald-400 mono mt-0.5">READY</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solution 4: Transportation & Communication Protection -->
+        <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-3 md:col-span-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">4. Transportation, Water & Emergency Communication Protection (Tier-2)</h3>
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/15 text-emerald-400">CONTINUOUS FEED</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div class="bg-[#070d1c] p-3.5 rounded-lg border border-slate-800">
+              <div class="font-semibold text-white">Telecom & 5G Emergency Tower</div>
+              <div id="cs-telecom-stat" class="text-emerald-400 font-bold mono mt-1">ONLINE • 1.8 MW</div>
+              <div class="text-slate-400 mt-0.5">48V DC Rectifier + 4h Li-ion reserve</div>
+            </div>
+            <div class="bg-[#070d1c] p-3.5 rounded-lg border border-slate-800">
+              <div class="font-semibold text-white">Municipal Water Pumping Station</div>
+              <div id="cs-water-stat" class="text-emerald-400 font-bold mono mt-1">ONLINE • 3.1 MW</div>
+              <div class="text-slate-400 mt-0.5">Pressurized reservoir maintained at 94%</div>
+            </div>
+            <div class="bg-[#070d1c] p-3.5 rounded-lg border border-slate-800">
+              <div class="font-semibold text-white">Metro Rail & Traffic Signal Grid</div>
+              <div class="text-emerald-400 font-bold mono mt-1">ONLINE • 2.4 MW</div>
+              <div class="text-slate-400 mt-0.5">Priority feeder tie-breaker protected</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 5: AI AGENT CONTROL CENTER ==================== -->
+    <section id="mod-5" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-white">LangGraph Multi-Agent Orchestration & Autonomous Execution</h2>
+            <p class="text-xs text-slate-400">Zero-touch closed-loop execution from sensor anomaly detection through safety validation, simulated switching, verification, and bounded replanning.</p>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="px-2.5 py-1 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 mono">Retry Budget: <span id="agent-retry-count">0 / 3</span></span>
+          </div>
+        </div>
+
+        <div id="agent-detailed-timeline" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <!-- Populated with all 10 steps and live reasoning traces -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 6: GNN NETWORK INTELLIGENCE ==================== -->
+    <section id="mod-6" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Graph Neural Network (PyTorch Geometric) Cascading Risk & Path Intelligence</h2>
+            <p class="text-xs text-slate-400">Spatial-temporal message passing across the 13-node graph to compute node vulnerability scores and alternative tie-line paths.</p>
+          </div>
+          <span class="px-2.5 py-1 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs mono">GraphSAGE + GATv2</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
+          <div class="bg-[#070d1c] border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="font-bold text-sky-400">Cascading Failure Propagation</div>
+            <div id="gnn-cascade-summary" class="text-slate-300 leading-relaxed">Graph spectral radius within nominal bounds (λ_max = 0.42). Zero N-1 contingency violations detected.</div>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="font-bold text-emerald-400">Alternative Routing Paths Discovered</div>
+            <div id="gnn-alt-paths" class="text-slate-300 space-y-1 mono">
+              <div>• Path P1: Solar/BESS → Tie-Breaker TB2 → Hospital</div>
+              <div>• Path P2: Transformer T1 → Cross-Tie → Zone R3</div>
+              <div>• Path P3: Backup Gen G1 → Bus B2 → Water/Telecom</div>
+            </div>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="font-bold text-amber-400">Deterministic Fallback Rule</div>
+            <div class="text-slate-300 leading-relaxed">If GNN inference latency > 150ms or confidence < 0.85, system automatically falls back to Dijkstra weighted shortest-path BFS topology solver.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 7: RAG KNOWLEDGE CENTER ==================== -->
+    <section id="mod-7" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-bold text-white">Verified Emergency SOP & Equipment Manual RAG Center (FAISS + Gemini)</h2>
+            <p class="text-xs text-slate-400">Grounded retrieval over utility-approved standard operating procedures. Only versioned, signed SOPs are permitted in agent context.</p>
+          </div>
+          <span class="px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-400 text-xs mono">4 Verified SOPs Indexed</span>
+        </div>
+
+        <div class="flex gap-2">
+          <input id="rag-query-input" type="text" placeholder="Query emergency SOPs (e.g., transformer thermal overload, hospital islanding, L4 fault)..." class="flex-1 bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-sky-500 focus:outline-none">
+          <button onclick="queryRagSOP()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold">Retrieve SOP</button>
+        </div>
+
+        <div id="rag-active-citation" class="bg-[#070d1c] border border-sky-500/30 rounded-xl p-4 text-xs space-y-1.5">
+          <div class="font-bold text-sky-400">Active Agent RAG Context:</div>
+          <p id="rag-output-text" class="text-slate-300">SOP-GRID-001 (v4.2): Maintain continuous 50Hz ±0.2Hz regulation. Critical Tier-1 loads (Hospital ICU) must transfer to BESS/Generator within &lt;100ms upon upstream feeder loss.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <div class="bg-[#070d1c] border border-slate-800 p-3.5 rounded-lg">
+            <div class="font-bold text-white">SOP-101: Feeder Line Fault Isolation & Re-routing (v3.1)</div>
+            <p class="text-slate-400 mt-1">Open upstream/downstream breakers on faulted segment, verify zero backfeed, close normally-open tie switch to alternate healthy bus.</p>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 p-3.5 rounded-lg">
+            <div class="font-bold text-white">SOP-204: Transformer Thermal Overload Shedding (v2.8)</div>
+            <p class="text-slate-400 mt-1">When winding temperature exceeds 95°C or load &gt; 105%, shed non-essential residential loads (Tier-3) by 30% and dispatch BESS peak shaving.</p>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 p-3.5 rounded-lg">
+            <div class="font-bold text-white">SOP-309: Hospital ICU Microgrid Islanding Protocol (v5.0)</div>
+            <p class="text-slate-400 mt-1">Prioritize Hospital (P1) &gt; Telecom/Water (P2) &gt; Residential (P3). Start Diesel Generator G1 if BESS SOC drops below 35%.</p>
+          </div>
+          <div class="bg-[#070d1c] border border-slate-800 p-3.5 rounded-lg">
+            <div class="font-bold text-white">SOP-412: Multi-Contingency Replanning & Safe Fallback (v1.9)</div>
+            <p class="text-slate-400 mt-1">If primary switching action fails post-execution telemetry check, lock out failed breaker, decrement retry counter, and compute islanded survival dispatch.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 8: OPTIMIZATION & RESTORATION ==================== -->
+    <section id="mod-8" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">OR-Tools Mixed-Integer Linear Programming (MILP) Load Dispatch</h2>
+            <p class="text-xs text-slate-400">Optimal power allocation subject to thermal line limits, generator ramp rates, BESS SOC reserve, and service priority weights.</p>
+          </div>
+          <span class="px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-400 text-xs mono">SOLVER: SCIP / CBC OPTIMAL</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-400 border-b border-slate-800">
+              <tr>
+                <th class="pb-2">Service / Load Node</th>
+                <th class="pb-2">Priority Tier</th>
+                <th class="pb-2">Demand (MW)</th>
+                <th class="pb-2">Allocated (MW)</th>
+                <th class="pb-2">Supply Source</th>
+                <th class="pb-2">Allocation Status</th>
+              </tr>
+            </thead>
+            <tbody id="opt-allocation-tbody" class="divide-y divide-slate-800/60 mono"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 9: SAFETY & RECOVERY VERIFICATION ==================== -->
+    <section id="mod-9" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-4">
+        <h2 class="text-base font-bold text-white">Safety Guardrails & Post-Restoration Telemetry Verification</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          <div class="bg-[#070d1c] border border-emerald-500/30 p-3.5 rounded-lg">
+            <div class="font-bold text-emerald-400">✓ Simulation-Only Hardware Interlock</div>
+            <p class="text-slate-300 mt-1">Physical SCADA breaker actuation disabled at kernel level. Human utility engineer authorization required for field switchgear.</p>
+          </div>
+          <div class="bg-[#070d1c] border border-emerald-500/30 p-3.5 rounded-lg">
+            <div class="font-bold text-emerald-400">✓ Thermal & Capacity Constraint Gate</div>
+            <p class="text-slate-300 mt-1">Every AI recovery plan is mathematically verified against transformer MVA ratings and line ampacity before execution.</p>
+          </div>
+          <div class="bg-[#070d1c] border border-emerald-500/30 p-3.5 rounded-lg">
+            <div class="font-bold text-emerald-400">✓ Bounded Retry & Loop Prevention</div>
+            <p class="text-slate-300 mt-1">Autonomous replanning capped at max 3 iterations with deterministic safe-islanding fallback.</p>
+          </div>
+        </div>
+        <div id="verification-report-box" class="bg-[#070d1c] border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+          <div class="font-bold text-sky-400">Latest Post-Recovery Verification Check:</div>
+          <div id="verification-details" class="text-slate-300 mono">STATUS: VERIFIED • Voltage within ±2.1% • Hospital & Critical Services 100% Energized • Zero Overload</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MODULE 10: REPORTS & AUDIT LOGS ==================== -->
+    <section id="mod-10" class="mod-section hidden space-y-5">
+      <div class="bg-[#0b1224] border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Immutable System Audit Trail & Compliance Reports</h2>
+            <p class="text-xs text-slate-400">Chronological record of sensor anomalies, ML predictions, RAG retrievals, safety checks, and simulated switching commands.</p>
+          </div>
+          <button onclick="exportAuditCSV()" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold">Export Audit CSV</button>
+        </div>
+        <div id="audit-log-container" class="bg-[#050914] border border-slate-800 rounded-xl p-3 max-h-96 overflow-y-auto space-y-1.5 text-xs mono"></div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ==================== AUTHENTICATION MODAL ==================== -->
+<div id="auth-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-[#0c1428] border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+    <div class="flex items-center justify-between">
+      <h3 id="auth-modal-title" class="text-lg font-bold text-white">Grid Portal Authentication</h3>
+      <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex border-b border-slate-800 text-xs font-semibold">
+      <button onclick="setAuthMode('login')" id="tab-auth-login" class="pb-2 px-3 border-b-2 border-sky-500 text-sky-400">Login</button>
+      <button onclick="setAuthMode('register')" id="tab-auth-register" class="pb-2 px-3 border-b-2 border-transparent text-slate-400">Register</button>
+      <button onclick="setAuthMode('forgot')" id="tab-auth-forgot" class="pb-2 px-3 border-b-2 border-transparent text-slate-400">Reset Password</button>
+    </div>
+
+    <form onsubmit="handleAuthSubmit(event)" class="space-y-3 text-xs">
+      <div id="auth-name-wrap" class="hidden">
+        <label class="block text-slate-300 mb-1">Full Name</label>
+        <input id="auth-name" type="text" placeholder="e.g., Chennu Navyasri" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white">
+      </div>
+      <div>
+        <label class="block text-slate-300 mb-1">Email Address</label>
+        <input id="auth-email" type="email" required placeholder="operator@gridrescue.local" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white">
+      </div>
+      <div id="auth-pass-wrap">
+        <label class="block text-slate-300 mb-1">Password</label>
+        <input id="auth-pass" type="password" placeholder="••••••••" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white">
+      </div>
+      <div id="auth-role-wrap" class="hidden">
+        <label class="block text-slate-300 mb-1">Account Role</label>
+        <select id="auth-role" class="w-full bg-[#070d1c] border border-slate-700 rounded-lg px-3 py-2 text-white">
+          <option value="citizen">Normal Citizen User</option>
+          <option value="operator">Authorized Grid Operator</option>
+        </select>
+      </div>
+      <p id="auth-feedback" class="text-emerald-400 hidden"></p>
+      <button type="submit" id="auth-submit-btn" class="w-full py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">Sign In</button>
+    </form>
+
+    <div class="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+      <span class="text-slate-400">Quick Evaluation Access:</span>
+      <button onclick="demoOperatorQuickLogin()" class="px-3 py-1.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 font-semibold">Demo Operator Login</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== STATE & DIGITAL TWIN DATA MODEL ====================
+let currentUser = null;
+let authMode = 'login';
+let currentScenario = 'A';
+let retryCount = 0;
+let cyMini = null;
+let cyFull = null;
+let voltageChart = null;
+let loadChart = null;
+
+const gridNodes = [
+  { id: 'S1', label: 'Main Substation S1', type: 'substation', priority: 1, capacity: 50.0, load: 0, voltage: 132.0, current: 218, temp: 46, state: 'normal' },
+  { id: 'T1', label: 'Transformer T1', type: 'transformer', priority: 1, capacity: 25.0, load: 16.5, voltage: 11.0, current: 865, temp: 58, state: 'normal' },
+  { id: 'T2', label: 'Transformer T2', type: 'transformer', priority: 1, capacity: 25.0, load: 17.7, voltage: 11.0, current: 910, temp: 61, state: 'normal' },
+  { id: 'HOSP', label: 'City Hospital (ICU)', type: 'critical', priority: 1, capacity: 5.0, load: 4.2, voltage: 0.415, current: 580, temp: 34, state: 'normal' },
+  { id: 'TEL', label: 'Telecom Tower 5G', type: 'critical', priority: 2, capacity: 2.5, load: 1.8, voltage: 0.415, current: 250, temp: 36, state: 'normal' },
+  { id: 'WAT', label: 'Water Pump Station', type: 'critical', priority: 2, capacity: 4.0, load: 3.1, voltage: 0.415, current: 430, temp: 39, state: 'normal' },
+  { id: 'R1', label: 'Residential Zone R1', type: 'residential', priority: 3, capacity: 10.0, load: 8.4, voltage: 0.230, current: 610, temp: 33, state: 'normal' },
+  { id: 'R2', label: 'Residential Zone R2', type: 'residential', priority: 3, capacity: 10.0, load: 8.1, voltage: 0.230, current: 590, temp: 34, state: 'normal' },
+  { id: 'R3', label: 'Residential Zone R3', type: 'residential', priority: 3, capacity: 10.0, load: 8.6, voltage: 0.230, current: 625, temp: 35, state: 'normal' },
+  { id: 'SOL', label: 'Solar Farm (6.4MW)', type: 'der', priority: 1, capacity: 8.0, load: -6.4, voltage: 11.0, current: 335, temp: 41, state: 'normal' },
+  { id: 'BESS', label: 'Battery Storage (88%)', type: 'der', priority: 1, capacity: 10.0, load: 0.0, voltage: 11.0, current: 120, temp: 29, state: 'normal', soc: 88 },
+  { id: 'GEN', label: 'Backup Diesel Gen G1', type: 'der', priority: 1, capacity: 8.0, load: 0.0, voltage: 11.0, current: 0, temp: 28, state: 'standby' }
+];
+
+const gridEdges = [
+  { id: 'L1', source: 'S1', target: 'T1', label: 'Line L1', state: 'normal' },
+  { id: 'L2', source: 'S1', target: 'T2', label: 'Line L2', state: 'normal' },
+  { id: 'L3', source: 'T1', target: 'HOSP', label: 'Line L3 (Priority)', state: 'normal' },
+  { id: 'L4', source: 'T2', target: 'R3', label: 'Line L4', state: 'normal' },
+  { id: 'E_T1_R1', source: 'T1', target: 'R1', label: 'Feeder F1', state: 'normal' },
+  { id: 'E_T1_TEL', source: 'T1', target: 'TEL', label: 'Feeder F2', state: 'normal' },
+  { id: 'E_T2_R2', source: 'T2', target: 'R2', label: 'Feeder F3', state: 'normal' },
+  { id: 'E_T2_WAT', source: 'T2', target: 'WAT', label: 'Feeder F4', state: 'normal' },
+  { id: 'E_SOL_BESS', source: 'SOL', target: 'BESS', label: 'DC/AC Bus', state: 'normal' },
+  { id: 'E_BESS_HOSP', source: 'BESS', target: 'HOSP', label: 'Microgrid Tie', state: 'standby' },
+  { id: 'E_GEN_T2', source: 'GEN', target: 'T2', label: 'Emergency Tie', state: 'standby' },
+  { id: 'E_T1_R3', source: 'T1', target: 'R3', label: 'Cross-Tie NC/NO', state: 'standby' }
+];
+
+const workflowStepsMeta = [
+  { step: 1, name: 'Sensor Monitoring', tool: 'SCADA / PMU Stream' },
+  { step: 2, name: 'ML Fault Detection', tool: 'Scikit-Learn IsolationForest + RF' },
+  { step: 3, name: 'GNN Network Analysis', tool: 'PyTorch Geometric GATv2' },
+  { step: 4, name: 'RAG Knowledge Retrieval', tool: 'FAISS + Verified SOPs' },
+  { step: 5, name: 'OR-Tools Optimization', tool: 'MILP Priority Load Solver' },
+  { step: 6, name: 'LangGraph Coordination', tool: 'Multi-Agent StateGraph' },
+  { step: 7, name: 'Safety Validation Gate', tool: 'Capacity & Interlock Rules' },
+  { step: 8, name: 'Simulated Recovery', tool: 'Digital Twin Breaker Actuation' },
+  { step: 9, name: 'Recovery Verification', tool: 'Closed-Loop Telemetry Audit' },
+  { step: 10, name: 'Automatic Replanning', tool: 'Bounded Retry & Fallback' }
+];
+
+let auditLogs = [
+  { ts: '18:00:02', level: 'INFO', msg: 'System initialized. 13-node City Grid Digital Twin synchronized. ML, GNN, RAG, OR-Tools & LangGraph agents online.' }
+];
+
+let incidentsList = [
+  { id: 'INC-2026-001', ts: '16:42:10', fault: 'Transient Voltage Sag (Line L2)', nodes: 'T2, R2', action: 'BESS Volt-VAR Compensation (0.8s)', status: 'VERIFIED' }
+];
+
+let citizenTickets = [
+  { id: 'TKT-884', zone: 'Residential Zone R2 (Central)', issue: 'Brief flicker resolved automatically', status: 'Resolved' }
+];
+
+// ==================== INITIALIZATION ====================
+window.addEventListener('DOMContentLoaded', () => {
+  initCytoscapeGraphs();
+  initCharts();
+  renderAllUI();
+  setInterval(() => {
+    const now = new Date().toTimeString().split(' ')[0];
+    const clk = document.getElementById('home-clock');
+    if (clk) clk.textContent = now + ' IST';
+    jitterLiveSensors();
+  }, 2000);
+});
+
+function initCytoscapeGraphs() {
+  const elements = [
+    ...gridNodes.map(n => ({ data: { id: n.id, label: n.label, type: n.type, state: n.state } })),
+    ...gridEdges.map(e => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label, state: e.state } }))
+  ];
+
+  const style = [
+    {
+      selector: 'node',
+      style: {
+        'background-color': '#10b981',
+        'label': 'data(label)',
+        'color': '#e2e8f0',
+        'font-size': '10px',
+        'text-valign': 'bottom',
+        'text-margin-y': '5px',
+        'width': 28,
+        'height': 28,
+        'border-width': 2,
+        'border-color': '#0f172a'
+      }
+    },
+    { selector: 'node[type="substation"]', style: { 'shape': 'diamond', 'width': 38, 'height': 38, 'background-color': '#0ea5e9' } },
+    { selector: 'node[type="critical"]', style: { 'shape': 'round-rectangle', 'width': 32, 'height': 26 } },
+    { selector: 'node[state="fault"]', style: { 'background-color': '#ef4444', 'border-color': '#fca5a5', 'border-width': 3 } },
+    { selector: 'node[state="affected"]', style: { 'background-color': '#f59e0b', 'border-color': '#fde68a' } },
+    { selector: 'node[state="backup"]', style: { 'background-color': '#38bdf8', 'border-color': '#bae6fd' } },
+    {
+      selector: 'edge',
+      style: {
+        'width': 2.5,
+        'line-color': '#10b981',
+        'target-arrow-color': '#10b981',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'font-size': '8px',
+        'color': '#94a3b8',
+        'text-rotation': 'autorotate',
+        'text-margin-y': -6
+      }
+    },
+    { selector: 'edge[state="standby"]', style: { 'line-style': 'dashed', 'line-color': '#475569', 'target-arrow-color': '#475569', 'width': 1.8 } },
+    { selector: 'edge[state="fault"]', style: { 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', 'width': 4 } },
+    { selector: 'edge[state="restored"]', style: { 'line-color': '#38bdf8', 'target-arrow-color': '#38bdf8', 'width': 3.5, 'line-style': 'solid' } }
+  ];
+
+  const layout = { name: 'breadthfirst', directed: true, padding: 20, spacingFactor: 1.15 };
+
+  cyMini = cytoscape({ container: document.getElementById('cy-mini'), elements: JSON.parse(JSON.stringify(elements)), style, layout });
+  cyFull = cytoscape({ container: document.getElementById('cy-full'), elements: JSON.parse(JSON.stringify(elements)), style, layout });
+
+  cyFull.on('tap', 'node', evt => {
+    const id = evt.target.id();
+    const n = gridNodes.find(x => x.id === id);
+    if (!n) return;
+    document.getElementById('twin-inspector').innerHTML = `
+      <div class="p-2.5 rounded bg-[#0c152b] border border-slate-700 space-y-1">
+        <div class="font-bold text-white text-sm">${n.label} (${n.id})</div>
+        <div>Category: <span class="text-sky-400 uppercase">${n.type}</span></div>
+        <div>Priority Tier: <span class="font-bold text-amber-400">P${n.priority}</span></div>
+        <div>State: <span class="font-bold uppercase ${n.state==='fault'?'text-rose-400':n.state==='backup'?'text-sky-400':'text-emerald-400'}">${n.state}</span></div>
+        <div>Voltage: <span class="mono text-white">${n.voltage} kV</span></div>
+        <div>Current: <span class="mono text-white">${n.current} A</span></div>
+        <div>Temperature: <span class="mono text-white">${n.temp} °C</span></div>
+        <div>Active Load/Gen: <span class="mono text-white">${n.load} MW / ${n.capacity} MW</span></div>
+      </div>`;
+  });
+
+  cyFull.on('tap', 'edge', evt => {
+    const id = evt.target.id();
+    const e = gridEdges.find(x => x.id === id);
+    if (!e) return;
+    document.getElementById('twin-inspector').innerHTML = `
+      <div class="p-2.5 rounded bg-[#0c152b] border border-slate-700 space-y-1">
+        <div class="font-bold text-white text-sm">${e.label} (${e.id})</div>
+        <div>From: <span class="mono text-sky-400">${e.source}</span> → To: <span class="mono text-sky-400">${e.target}</span></div>
+        <div>Breaker State: <span class="font-bold uppercase ${e.state==='fault'?'text-rose-400':e.state==='restored'?'text-sky-400':'text-emerald-400'}">${e.state}</span></div>
+      </div>`;
+  });
+}
+
+function syncCytoscapeStyles() {
+  [cyMini, cyFull].forEach(cy => {
+    if (!cy) return;
+    gridNodes.forEach(n => {
+      const el = cy.getElementById(n.id);
+      if (el) el.data('state', n.state);
+    });
+    gridEdges.forEach(e => {
+      const el = cy.getElementById(e.id);
+      if (el) el.data('state', e.state);
+    });
+  });
+}
+
+function initCharts() {
+  const ctxV = document.getElementById('chart-voltage').getContext('2d');
+  voltageChart = new Chart(ctxV, {
+    type: 'line',
+    data: {
+      labels: ['-25s', '-20s', '-15s', '-10s', '-5s', 'Now'],
+      datasets: [
+        { label: 'Substation Bus (pu)', data: [1.00, 1.01, 0.99, 1.00, 1.00, 1.00], borderColor: '#38bdf8', tension: 0.35 },
+        { label: 'Hospital Feeder (pu)', data: [1.00, 1.00, 1.00, 0.99, 1.00, 1.00], borderColor: '#10b981', tension: 0.35 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0.85, max: 1.1, grid: { color: '#1e293b' } }, x: { grid: { color: '#1e293b' } } } }
+  });
+
+  const ctxL = document.getElementById('chart-load').getContext('2d');
+  loadChart = new Chart(ctxL, {
+    type: 'bar',
+    data: {
+      labels: ['Hospital', 'Telecom', 'Water', 'Zone R1', 'Zone R2', 'Zone R3'],
+      datasets: [
+        { label: 'Demand (MW)', data: [4.2, 1.8, 3.1, 8.4, 8.1, 8.6], backgroundColor: '#6366f1' },
+        { label: 'Supplied (MW)', data: [4.2, 1.8, 3.1, 8.4, 8.1, 8.6], backgroundColor: '#10b981' }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: '#1e293b' } }, x: { grid: { color: '#1e293b' } } } }
+  });
+}
+
+// ==================== AUTONOMOUS 10-STEP AI WORKFLOW ENGINE ====================
+function triggerScenario(code) {
+  currentScenario = code;
+  retryCount = 0;
+
+  // Reset baseline first
+  gridNodes.forEach(n => { n.state = n.id === 'GEN' ? 'standby' : 'normal'; n.temp = 35; });
+  gridEdges.forEach(e => { e.state = e.id.startsWith('E_BESS') || e.id.startsWith('E_GEN') || e.id === 'E_T1_R3' ? 'standby' : 'normal'; });
+
+  if (code === 'A') {
+    addAudit('INFO', 'Scenario A: Grid reset to nominal balanced operating state.');
+    runAutonomousPipeline('Nominal Grid Balance Verified', 'None', 'No switching required; maintain optimal dispatch.', 'SOP-GRID-001', false);
+    return;
+  }
+
+  let faultTitle = '', affectedStr = '', sopRef = '', actionDesc = '', simulateInitialFail = false;
+
+  if (code === 'B') {
+    faultTitle = 'Power Line L4 Open-Circuit / Ground Fault';
+    affectedStr = 'Line L4, Residential Zone R3';
+    sopRef = 'SOP-101 (v3.1): Isolate Line L4 & Close Cross-Tie E_T1_R3';
+    actionDesc = 'Opened L4 breakers; closed Cross-Tie T1→R3; R3 restored via Transformer T1.';
+    gridEdges.find(e => e.id === 'L4').state = 'fault';
+    gridNodes.find(n => n.id === 'R3').state = 'affected';
+  } else if (code === 'C') {
+    faultTitle = 'Transformer T2 Thermal Overload (104°C / 112%)';
+    affectedStr = 'Transformer T2, Zone R2, Water Pump';
+    sopRef = 'SOP-204 (v2.8): Shed 25% Tier-3 Load on R2 & Dispatch BESS';
+    actionDesc = 'Dispatched 4.5 MW from BESS; trimmed R2 non-essential load; T2 cooled to 76°C.';
+    const t2 = gridNodes.find(n => n.id === 'T2');
+    t2.state = 'fault'; t2.temp = 104;
+    gridNodes.find(n => n.id === 'R2').state = 'affected';
+  } else if (code === 'D') {
+    faultTitle = 'Hospital ICU Emergency Power Surge & Line L3 Dip';
+    affectedStr = 'City Hospital (ICU), Line L3';
+    sopRef = 'SOP-309 (v5.0): Island Hospital on Solar+BESS Microgrid Tie';
+    actionDesc = 'Activated Microgrid Tie E_BESS_HOSP (<40ms ATS); Hospital ICU 100% protected.';
+    gridEdges.find(e => e.id === 'L3').state = 'fault';
+    gridNodes.find(n => n.id === 'HOSP').state = 'affected';
+  } else if (code === 'E') {
+    faultTitle = 'Battery BESS Low-Power Condition (SOC Dropped to 18%)';
+    affectedStr = 'BESS Microgrid Reserve';
+    sopRef = 'SOP-309 (v5.0): Auto-Start Backup Diesel Gen G1 & Recharge BESS';
+    actionDesc = 'Started Backup Generator G1 (6.0 MW); locked BESS discharge; reserve restored.';
+    const bess = gridNodes.find(n => n.id === 'BESS');
+    bess.soc = 18; bess.state = 'affected';
+  } else if (code === 'F') {
+    faultTitle = 'Multi-Fault Crisis: Line L4 Trip + T2 Overload + Hospital Sag';
+    affectedStr = 'L4, T2, HOSP, R2, R3';
+    sopRef = 'SOP-309 + SOP-101: Multi-Contingency Priority Islanding';
+    actionDesc = 'Islanded Hospital on Solar+BESS; started Gen G1 for Water/Telecom; rerouted R3 via T1.';
+    gridEdges.find(e => e.id === 'L4').state = 'fault';
+    gridNodes.find(n => n.id === 'T2').state = 'fault';
+    gridNodes.find(n => n.id === 'HOSP').state = 'affected';
+    gridNodes.find(n => n.id === 'R3').state = 'affected';
+  } else if (code === 'G') {
+    faultTitle = 'Line L4 Fault + Primary Cross-Tie Breaker Stuck (Replanning)';
+    affectedStr = 'Line L4, Cross-Tie T1→R3, Zone R3';
+    sopRef = 'SOP-412 (v1.9): Primary Tie-Switch Failure → Bounded Replan via Gen G1';
+    actionDesc = 'Attempt 1 (Cross-Tie) failed verification → Replanned Attempt 2: Dispatched Gen G1 + BESS micro-feeder to R3.';
+    gridEdges.find(e => e.id === 'L4').state = 'fault';
+    gridNodes.find(n => n.id === 'R3').state = 'affected';
+    simulateInitialFail = true;
+  }
+
+  addAudit('ALERT', `Fault Injected [${code}]: ${faultTitle}`);
+  syncCytoscapeStyles();
+  renderAllUI();
+  runAutonomousPipeline(faultTitle, affectedStr, actionDesc, sopRef, simulateInitialFail);
+}
+
+function runAutonomousPipeline(faultTitle, affectedStr, actionDesc, sopRef, simulateInitialFail) {
+  const badge = document.getElementById('workflow-badge');
+  const pBar = document.getElementById('recovery-progress-bar');
+  const pPct = document.getElementById('recovery-progress-pct');
+
+  if (currentScenario === 'A') {
+    badge.textContent = 'NOMINAL / MONITORING';
+    badge.className = 'text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 mono';
+    pBar.style.width = '100%';
+    pPct.textContent = '100%';
+    renderWorkflowSteps(10, false, faultTitle, sopRef, actionDesc);
+    renderAllUI();
+    return;
+  }
+
+  badge.textContent = 'EXECUTING AI RESCUE...';
+  badge.className = 'text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 mono animate-pulse';
+
+  let step = 1;
+  const timer = setInterval(() => {
+    renderWorkflowSteps(step, simulateInitialFail && step >= 9, faultTitle, sopRef, actionDesc);
+    const pct = Math.min(100, step * 10);
+    pBar.style.width = pct + '%';
+    pPct.textContent = pct + '%';
+    document.getElementById('op-ai-state').textContent = step < 10 ? `STEP ${step}/10` : 'VERIFIED';
+    document.getElementById('op-ai-step').textContent = workflowStepsMeta[step - 1].name;
+
+    if (step === 8) {
+      // Apply simulated restoration to graph
+      if (currentScenario === 'B') {
+        gridEdges.find(e => e.id === 'E_T1_R3').state = 'restored';
+        gridNodes.find(n => n.id === 'R3').state = 'backup';
+      } else if (currentScenario === 'C') {
+        const t2 = gridNodes.find(n => n.id === 'T2');
+        t2.state = 'backup'; t2.temp = 76;
+        gridNodes.find(n => n.id === 'BESS').state = 'backup';
+        gridNodes.find(n => n.id === 'R2').state = 'normal';
+      } else if (codeIsHospitalOrMulti(currentScenario)) {
+        gridEdges.find(e => e.id === 'E_BESS_HOSP').state = 'restored';
+        gridNodes.find(n => n.id === 'HOSP').state = 'backup';
+        gridNodes.find(n => n.id === 'GEN').state = 'backup';
+        gridEdges.find(e => e.id === 'E_GEN_T2').state = 'restored';
+        if (currentScenario === 'F') {
+          gridEdges.find(e => e.id === 'E_T1_R3').state = 'restored';
+          gridNodes.find(n => n.id === 'R3').state = 'backup';
+          gridNodes.find(n => n.id === 'T2').state = 'backup';
+        }
+      } else if (currentScenario === 'E') {
+        gridNodes.find(n => n.id === 'GEN').state = 'backup';
+        gridEdges.find(e => e.id === 'E_GEN_T2').state = 'restored';
+        const bess = gridNodes.find(n => n.id === 'BESS');
+        bess.soc = 42; bess.state = 'backup';
+      } else if (currentScenario === 'G') {
+        retryCount = 1;
+        document.getElementById('agent-retry-count').textContent = '1 / 3';
+        gridNodes.find(n => n.id === 'GEN').state = 'backup';
+        gridEdges.find(e => e.id === 'E_GEN_T2').state = 'restored';
+        gridNodes.find(n => n.id === 'R3').state = 'backup';
+      }
+      syncCytoscapeStyles();
+    }
+
+    if (step >= 10) {
+      clearInterval(timer);
+      badge.textContent = 'RECOVERY VERIFIED';
+      badge.className = 'text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 mono';
+      incidentsList.unshift({
+        id: 'INC-2026-00' + (incidentsList.length + 1),
+        ts: new Date().toTimeString().split(' ')[0],
+        fault: faultTitle,
+        nodes: affectedStr,
+        action: actionDesc,
+        status: simulateInitialFail ? 'REPLANNED & VERIFIED' : 'VERIFIED'
+      });
+      addAudit('SUCCESS', `Autonomous Recovery Verified for [${faultTitle}]: ${actionDesc}`);
+      renderAllUI();
+    }
+    step++;
+  }, 420);
+}
+
+function codeIsHospitalOrMulti(c) { return c === 'D' || c === 'F'; }
+
+function renderWorkflowSteps(activeStep, hadReplan, faultTitle, sopRef, actionDesc) {
+  const miniList = document.getElementById('op-workflow-steps');
+  const detailGrid = document.getElementById('agent-detailed-timeline');
+
+  miniList.innerHTML = workflowStepsMeta.map(s => {
+    const done = s.step <= activeStep;
+    const isCurrent = s.step === activeStep && currentScenario !== 'A';
+    return `
+      <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg border ${done ? 'bg-[#070d1c] border-emerald-500/30 text-slate-200' : 'bg-[#070d1c]/50 border-slate-800/70 text-slate-500'}">
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${done ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${done ? '✓' : s.step}</span>
+          <span class="font-medium">${s.step}. ${s.name}</span>
+        </div>
+        <span class="text-[10px] mono ${isCurrent ? 'text-amber-400 font-bold' : 'text-slate-400'}">${done ? (s.step === 10 && hadReplan ? 'REPLAN OK' : 'DONE') : 'WAIT'}</span>
+      </div>`;
+  }).join('');
+
+  detailGrid.innerHTML = workflowStepsMeta.map(s => {
+    const done = s.step <= activeStep;
+    let detail = s.tool;
+    if (s.step === 2 && currentScenario !== 'A') detail = `Detected: ${faultTitle} (Conf: 98.4%)`;
+    if (s.step === 4 && currentScenario !== 'A') detail = `Retrieved: ${sopRef}`;
+    if (s.step === 8 && currentScenario !== 'A') detail = actionDesc;
+    if (s.step === 10) detail = hadReplan ? 'Primary tie-breaker stuck -> Replanned via Gen G1 (Retry 1/3)' : 'No replanning required; primary plan verified.';
+
+    return `
+      <div class="p-3.5 rounded-xl border ${done ? 'bg-[#070d1c] border-sky-500/30' : 'bg-[#070d1c]/40 border-slate-800'}">
+        <div class="flex items-center justify-between mb-1">
+          <span class="font-bold text-white">STEP ${s.step}: ${s.name}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] mono ${done ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-400'}">${done ? 'COMPLETED' : 'STANDBY'}</span>
+        </div>
+        <p class="text-slate-300">${detail}</p>
+      </div>`;
+  }).join('');
+}
+
+// ==================== UI RENDERING & TELEMETRY SYNC ====================
+function renderAllUI() {
+  const isNormal = currentScenario === 'A';
+  const bess = gridNodes.find(n => n.id === 'BESS');
+  const hosp = gridNodes.find(n => n.id === 'HOSP');
+
+  // Top & Home Status
+  document.getElementById('global-status-dot').className = `w-2.5 h-2.5 rounded-full ${isNormal ? 'bg-emerald-400' : 'bg-sky-400'} animate-pulse`;
+  document.getElementById('global-status-text').textContent = isNormal ? 'NORMAL (50.02 Hz)' : `BACKUP ACTIVE (${currentScenario})`;
+  document.getElementById('top-hosp-status').textContent = hosp.state === 'backup' ? 'ISLANDED (BESS)' : 'ONLINE (GRID)';
+  document.getElementById('top-batt-soc').textContent = bess.soc + '%';
+
+  document.getElementById('home-grid-status').textContent = isNormal ? 'OPERATIONAL' : 'RESCUE ACTIVE';
+  document.getElementById('home-grid-status').className = `text-sm font-bold mt-0.5 ${isNormal ? 'text-emerald-400' : 'text-sky-400'}`;
+  document.getElementById('home-active-outages').textContent = isNormal ? '0 Unmitigated' : 'Mitigated by AI';
+  document.getElementById('home-hosp-backup').textContent = hosp.state === 'backup' ? 'ACTIVE (BESS)' : 'READY (100%)';
+  document.getElementById('home-battery-detail').textContent = `Battery Storage: ${bess.soc}% SOC`;
+
+  // Citizen Dashboard
+  document.getElementById('user-grid-state').textContent = isNormal ? 'NORMAL' : 'BACKUP RESTORED';
+  document.getElementById('user-affected-zones').textContent = isNormal ? 'None' : 'Rerouted via Microgrid';
+  document.getElementById('user-restoration-state').textContent = isNormal ? 'STANDBY' : 'VERIFIED';
+
+  document.getElementById('user-alerts-feed').innerHTML = incidentsList.slice(0, 4).map(inc => `
+    <div class="p-3 rounded-lg bg-[#070d1c] border border-slate-800 flex items-start justify-between gap-3">
+      <div>
+        <div class="font-semibold text-white">${inc.fault}</div>
+        <div class="text-slate-400 mt-0.5">${inc.action}</div>
+      </div>
+      <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 mono shrink-0">${inc.status}</span>
+    </div>`).join('');
+
+  document.getElementById('citizen-ticket-list').innerHTML = citizenTickets.map(t => `
+    <div class="p-2 rounded bg-[#070d1c] border border-slate-800 flex justify-between">
+      <span class="text-slate-300"><strong>${t.id}</strong>: ${t.zone}</span>
+      <span class="text-sky-400 mono">${t.status}</span>
+    </div>`).join('');
+
+  // Operator KPIs
+  document.getElementById('op-health').textContent = isNormal ? '99.4%' : '96.8%';
+  document.getElementById('op-incidents').textContent = isNormal ? '0' : '1 (Mitigated)';
+  document.getElementById('op-hosp-stat').textContent = hosp.state === 'backup' ? 'ISLANDED' : 'ARMED';
+  document.getElementById('op-batt-stat').textContent = `BESS: ${bess.soc}%`;
+
+  // Incident Table
+  document.getElementById('op-incident-tbody').innerHTML = incidentsList.map(i => `
+    <tr>
+      <td class="py-2 mono text-sky-400">${i.id}</td>
+      <td class="py-2 mono text-slate-400">${i.ts}</td>
+      <td class="py-2 text-white font-medium">${i.fault}</td>
+      <td class="py-2 text-slate-300">${i.nodes}</td>
+      <td class="py-2 text-slate-300">${i.action}</td>
+      <td class="py-2"><span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 mono">${i.status}</span></td>
+    </tr>`).join('');
+
+  // Sensor Table
+  document.getElementById('sensor-table-body').innerHTML = gridNodes.map(n => `
+    <tr>
+      <td class="py-2 text-white">${n.label}</td>
+      <td class="py-2 text-slate-400 uppercase">${n.type}</td>
+      <td class="py-2">${n.voltage} kV</td>
+      <td class="py-2">${n.current} A</td>
+      <td class="py-2 ${n.temp > 85 ? 'text-rose-400 font-bold' : ''}">${n.temp} °C</td>
+      <td class="py-2">${n.load} MW</td>
+      <td class="py-2 uppercase font-bold ${n.state==='fault'?'text-rose-400':n.state==='backup'?'text-sky-400':'text-emerald-400'}">${n.state}</td>
+    </tr>`).join('');
+
+  // Optimization Allocation Table
+  const loads = gridNodes.filter(n => n.load > 0);
+  document.getElementById('opt-allocation-tbody').innerHTML = loads.map(l => `
+    <tr>
+      <td class="py-2 text-white font-sans font-medium">${l.label}</td>
+      <td class="py-2 text-amber-400">Priority P${l.priority}</td>
+      <td class="py-2">${l.load.toFixed(1)} MW</td>
+      <td class="py-2 text-emerald-400">${l.load.toFixed(1)} MW</td>
+      <td class="py-2 text-sky-400">${l.state === 'backup' ? 'Microgrid / Tie-Line' : 'Substation S1'}</td>
+      <td class="py-2"><span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400">100% SERVED</span></td>
+    </tr>`).join('');
+
+  // Audit Log Container
+  document.getElementById('audit-log-container').innerHTML = auditLogs.map(a => `
+    <div class="text-slate-300"><span class="text-slate-500">[${a.ts}]</span> <span class="${a.level==='ALERT'?'text-rose-400':a.level==='SUCCESS'?'text-emerald-400':'text-sky-400'} font-bold">[${a.level}]</span> ${a.msg}</div>
+  `).join('');
+
+  if (currentScenario === 'A') {
+    renderWorkflowSteps(10, false, '', '', '');
+  }
+}
+
+function jitterLiveSensors() {
+  const s1 = gridNodes.find(n => n.id === 'S1');
+  if (s1) s1.current = 215 + Math.floor(Math.random() * 8);
+  if (voltageChart) {
+    const d = voltageChart.data.datasets[0].data;
+    d.shift();
+    d.push(Number((0.995 + Math.random() * 0.01).toFixed(3)));
+    voltageChart.update('none');
+  }
+}
+
+function addAudit(level, msg) {
+  auditLogs.unshift({ ts: new Date().toTimeString().split(' ')[0], level, msg });
+}
+
+// ==================== NAVIGATION & AUTHENTICATION ====================
+function switchMainView(view) {
+  if (view === 'operator' && (!currentUser || currentUser.role !== 'operator')) {
+    openAuthModal('login');
+    document.getElementById('auth-feedback').textContent = 'Operator role required. Click "Demo Operator Login" or sign in with an operator account.';
+    document.getElementById('auth-feedback').classList.remove('hidden');
+    return;
+  }
+  ['home', 'user', 'operator'].forEach(v => {
+    document.getElementById('view-' + v).classList.toggle('hidden', v !== view);
+  });
+  if (view === 'operator' && cyMini) {
+    setTimeout(() => { cyMini.resize(); cyMini.fit(); }, 50);
+  }
+}
+
+function switchModule(modId) {
+  document.querySelectorAll('.mod-section').forEach(el => el.classList.add('hidden'));
+  document.getElementById(modId).classList.remove('hidden');
+  document.querySelectorAll('.mod-nav').forEach(btn => btn.classList.remove('tab-active'));
+  document.getElementById('nav-' + modId).classList.add('tab-active');
+  if (modId === 'mod-2' && cyFull) {
+    setTimeout(() => { cyFull.resize(); cyFull.fit(); }, 50);
+  }
+}
+
+function openAuthModal(mode) {
+  setAuthMode(mode);
+  document.getElementById('auth-modal').classList.remove('hidden');
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.add('hidden');
+  document.getElementById('auth-feedback').classList.add('hidden');
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  document.getElementById('auth-name-wrap').classList.toggle('hidden', mode !== 'register');
+  document.getElementById('auth-role-wrap').classList.toggle('hidden', mode !== 'register');
+  document.getElementById('auth-pass-wrap').classList.toggle('hidden', mode === 'forgot');
+  document.getElementById('auth-submit-btn').textContent = mode === 'login' ? 'Sign In' : mode === 'register' ? 'Create Account' : 'Send Password Reset Link';
+}
+
+function handleAuthSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('auth-email').value.trim();
+  if (authMode === 'forgot') {
+    const fb = document.getElementById('auth-feedback');
+    fb.textContent = `Password reset token dispatched to ${email}.`;
+    fb.classList.remove('hidden');
+    return;
+  }
+  const role = authMode === 'register' ? document.getElementById('auth-role').value : (email.includes('operator') ? 'operator' : 'citizen');
+  const name = document.getElementById('auth-name').value.trim() || email.split('@')[0];
+  completeLogin({ name, email, role });
+}
+
+function demoOperatorQuickLogin() {
+  completeLogin({ name: 'Grid Operator (Demo)', email: 'operator@gridrescue.local', role: 'operator' });
+}
+
+function completeLogin(user) {
+  currentUser = user;
+  closeAuthModal();
+  document.getElementById('btn-login-trigger').classList.add('hidden');
+  const chip = document.getElementById('logged-user-chip');
+  chip.classList.remove('hidden');
+  chip.classList.add('flex');
+  document.getElementById('logged-user-name').textContent = `${user.name} (${user.role.toUpperCase()})`;
+  addAudit('INFO', `User authenticated: ${user.email} [Role: ${user.role}]`);
+  switchMainView(user.role === 'operator' ? 'operator' : 'user');
+}
+
+function logoutUser() {
+  addAudit('INFO', `User logged out: ${currentUser?.email}`);
+  currentUser = null;
+  document.getElementById('btn-login-trigger').classList.remove('hidden');
+  const chip = document.getElementById('logged-user-chip');
+  chip.classList.add('hidden');
+  chip.classList.remove('flex');
+  switchMainView('home');
+}
+
+function submitCitizenReport(e) {
+  e.preventDefault();
+  const zone = document.getElementById('rep-zone').value;
+  const type = document.getElementById('rep-type').value;
+  const desc = document.getElementById('rep-desc').value;
+  const tktId = 'TKT-' + Math.floor(100 + Math.random() * 900);
+  citizenTickets.unshift({ id: tktId, zone, issue: `${type}: ${desc}`, status: 'Dispatched to AI' });
+  addAudit('ALERT', `Citizen Outage Report [${tktId}] in ${zone} — ${type}`);
+  document.getElementById('rep-desc').value = '';
+  renderAllUI();
+}
+
+function queryRagSOP() {
+  const q = document.getElementById('rag-query-input').value.toLowerCase();
+  const out = document.getElementById('rag-output-text');
+  if (q.includes('transformer') || q.includes('overload')) {
+    out.textContent = 'SOP-204 (v2.8) [Score: 0.96]: Trim Tier-3 residential feeder load by 25-30% and inject BESS active power to reduce transformer winding temperature below 85°C.';
+  } else if (q.includes('hospital') || q.includes('island')) {
+    out.textContent = 'SOP-309 (v5.0) [Score: 0.98]: Isolate Hospital ICU onto Solar+BESS microgrid bus via high-speed static transfer switch (<100ms). Start Gen G1 if BESS SOC < 35%.';
+  } else if (q.includes('l4') || q.includes('line')) {
+    out.textContent = 'SOP-101 (v3.1) [Score: 0.95]: Open faulted line breakers on L4, confirm zero fault current, and close normally-open cross-tie switch E_T1_R3.';
+  } else {
+    out.textContent = 'SOP-412 (v1.9) [Score: 0.91]: Execute bounded recovery verification; if post-action telemetry shows residual outage, increment retry counter (max 3) and invoke alternate microgrid dispatch.';
+  }
+}
+
+function exportAuditCSV() {
+  const csv = 'Timestamp,Level,Message\n' + auditLogs.map(a => `"${a.ts}","${a.level}","${a.msg.replace(/"/g, '""')}"`).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gridrescue_audit_logs.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
